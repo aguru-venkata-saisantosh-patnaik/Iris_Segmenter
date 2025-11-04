@@ -64,11 +64,15 @@ Robust preprocessing and augmentation are critical for medical segmentation wher
 ---
 
 ## Custom loss & metrics
-To address the heavy class imbalance between background and optic disc pixels, training leverages a combined loss that encourages both accurate per-pixel prediction and strong overlap:
+This project uses a **Jaccard Coefficient Loss** (IoU-based) implemented as a custom loss function and adapted for the U-Net training regime used here. The implementation in the notebook emphasizes overlap optimization while providing flexibility through **adjustable weighting for specific layers**.
 
-- **Dice coefficient (overlap metric):** used as a primary overlap metric to evaluate how well predicted masks align with ground truth masks. Dice is robust to class imbalance and is reported as a main performance indicator.
-- **Combined loss (implemented in the notebook):** a sum of Binary Crossentropy (BCE) and a Dice-based term (e.g., `Loss = BCE + (1 − Dice)`). This encourages good pixelwise likelihoods while directly optimizing for mask overlap.
-- **Monitored metrics:** the notebook records both pixel-wise accuracy and Dice coefficient during training and evaluation for balanced interpretation of performance.
+**What the Jaccard Coefficient Loss is**
+- The Jaccard coefficient (Intersection-over-Union, IoU) measures overlap between predicted and ground-truth masks. The loss used is based on `1 − IoU` (with a small smoothing term to ensure numerical stability).
+- IoU-focused loss directly optimizes the overlap metric that matters for segmentation quality, making it a strong choice when the target occupies a small portion of the image (optic disc vs background).
+
+**Why this choice**
+- Jaccard loss aligns training with the evaluation objective (overlap), while layer-weighting / deep supervision helps with optimization and faster convergence on encoder–decoder networks.
+- The notebook also reports **Dice coefficient** and **pixel-wise accuracy** per epoch for a comprehensive view of model performance: IoU/Dice capture overlap quality, while accuracy gives a coarse pixel-level view (used carefully because background dominates).
 
 ---
 
@@ -81,4 +85,4 @@ To address the heavy class imbalance between background and optic disc pixels, t
 
 ## Results & intended downstream usage
 - **Primary deliverable:** high-quality optic-disc segmentation masks (probability maps + binary masks).  
-- **Downstream uses:** segmentation outputs can be used to compute cup/disc metrics, rim features, or be fed to a classifier to perform glaucoma vs. non-glaucoma prediction. The segmentation stage reduces variability and provides explicit spatial context for clinical feature extraction.
+- **Downstream uses:** segmentation outputs can be used to be fed to a classifier to perform glaucoma vs. non-glaucoma prediction. The segmentation stage reduces variability and provides explicit spatial context for clinical feature extraction.
