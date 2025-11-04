@@ -59,9 +59,6 @@ Robust preprocessing and augmentation are critical for medical segmentation wher
   - Random translations and zooms
 - **Intensity augmentations:**
   - Brightness/contrast jitter
-  - Mild Gaussian blur or sharpening (optional)
-- **Advanced augmentations (optional in notebook):**
-  - Elastic deformations to simulate plausible shape variance of the optic disc
 - **Implementation:** augmentations implemented using OpenCV + NumPy so that spatial transforms preserve mask alignment exactly.
 
 ---
@@ -85,10 +82,3 @@ To address the heavy class imbalance between background and optic disc pixels, t
 ## Results & intended downstream usage
 - **Primary deliverable:** high-quality optic-disc segmentation masks (probability maps + binary masks).  
 - **Downstream uses:** segmentation outputs can be used to compute cup/disc metrics, rim features, or be fed to a classifier to perform glaucoma vs. non-glaucoma prediction. The segmentation stage reduces variability and provides explicit spatial context for clinical feature extraction.
-
----
-
-## File structure (recommended / what to expect in the repo)
-├── Iris_Segmenter(End_to_End).ipynb # notebook with full pipeline (upload this)
-├── README.md # this file
-└── requirements.txt
