@@ -1,4 +1,4 @@
-# Glaucoma Detection — Iris Segmenter
+# Iris Segmenter
 
 **Status:** Segmentation pipeline (optic-disc segmentation) — U-Net implemented in TensorFlow / Keras.  
 **Data:** Training and evaluation datasets are confidential and **not** included in this repository.
