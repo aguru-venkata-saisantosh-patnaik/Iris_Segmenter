@@ -1,88 +1,162 @@
-# Iris Segmenter
+# Iris Segmenter — End-to-End Optic Disc Segmentation
 
-**Status:** Segmentation pipeline (optic-disc segmentation) — U-Net implemented in TensorFlow / Keras.  
-**Data:** Training and evaluation datasets are confidential and **not** included in this repository.
+> **Status:** Training and evaluation datasets are confidential and not included. The full pipeline code — preprocessing, model definition, training, and evaluation — is in the notebook.
 
----
-
-## Project summary
-This repository implements an end-to-end deep-learning pipeline to **segment the optic disc** from cropped optic-disc fundus images. The produced segmentation masks are intended as the foundational step toward automated glaucoma assessment (e.g., cup/disc analysis or a downstream classifier). The core model is a fully convolutional **U-Net** implemented with `tensorflow.keras`; preprocessing and augmentation use OpenCV and NumPy.
+A deep learning pipeline for **pixel-wise segmentation of the optic disc and pupil** from retinal video frames, producing 3-class segmentation masks for downstream glaucoma assessment. Built with a custom U-Net in TensorFlow/Keras, trained on Colab with Google Drive data storage.
 
 ---
 
-## What’s included
-- `Iris_Segmenter(End_to_End).ipynb` — primary notebook containing the full pipeline: data loading placeholders, preprocessing, augmentation, U-Net model definition, training loop, custom loss, metric computation, evaluation visuals, and inference examples.
-- Utilities and cells for visualization of input → mask overlays and metric reporting.
-
-> **Note:** No training or evaluation data is provided here.
-
----
-
-## Problem statement
-Segment the optic disc from cropped RGB optic-disc images to produce a binary per-pixel segmentation mask (background vs disc). This segmentation output is intended for downstream clinically relevant measurements and for feeding into classification models for glaucoma detection.
+## Table of Contents
+- [Problem Statement](#problem-statement)
+- [Pipeline Overview](#pipeline-overview)
+- [Model Architecture](#model-architecture)
+- [Custom Loss & Metrics](#custom-loss--metrics)
+- [Results](#results)
+- [How to Run](#how-to-run)
+- [Requirements](#requirements)
 
 ---
 
-## Approach & pipeline (high level)
-- **Input:** Cropped optic-disc RGB images.  
-- **Preprocessing:** Resizing and intensity normalization; masks ensured to be binary (0/1).  
-- **Augmentation:** Paired image+mask augmentations applied to training samples to improve generalization.  
-- **Model:** U-Net encoder–decoder with skip connections (see architecture section).  
-- **Loss:** Custom combined loss to handle class imbalance (overlap + pixelwise components).  
-- **Metrics:** Pixel-wise accuracy and Dice coefficient (overlap) used for evaluation.  
-- **Output:** Predicted probability map per pixel; thresholding yields a binary segmentation mask.
+## Problem Statement
+
+<img src="images/raw_eye.png" width="500" alt="Raw Eye Video Frame"/>
+
+Accurate optic disc and pupil segmentation from retinal imaging is the foundational step for:
+- **Glaucoma detection** — cup-to-disc ratio measurement requires a precise disc boundary
+- **Pupillometry** — pupil size tracking for neurological assessment
+- **Surgical robotics** — real-time eye tracking for laser/robotic surgery guidance
+
+Input: RGB eye video frames (400×200 px) extracted from a Cirrus ophthalmic imaging device at 1 fps.  
+Output: Per-pixel 3-class segmentation mask.
 
 ---
 
-## Model architecture (U-Net) — implementation details
-This project uses a classic U-Net style architecture implemented in TensorFlow/Keras. Key design choices documented here reflect the implementation in the notebook:
+## Pipeline Overview
 
-- **Encoder–decoder (fully convolutional) with skip connections** to preserve high-resolution localization information while learning hierarchical features.
-- **Initial filter count:** small base (8 filters at first encoder block) and doubles per downsampling stage (e.g., 8 → 16 → 32 → 64), chosen to keep model capacity moderate and memory-efficient for medical images.
-- **Convolution blocks:** each encoder/decoder block contains stacked 3×3 convolutions with `ELU` activations and `he_normal` kernel initialization; two convolution layers per block improves representational power.
-- **Downsampling:** max-pooling layers are used between encoder blocks to reduce spatial resolution and increase receptive field.
-- **Upsampling:** decoder uses learned upsampling (transposed convolutions or upsampling + convolution) followed by concatenation with corresponding encoder feature maps (skip connections) and further convolutional refinement.
-- **Output head:** a 1×1 convolution with `sigmoid` activation produces a per-pixel probability for the binary disc class.
-- **Regularization options:** dropout layers are available in the notebook to mitigate overfitting for small datasets.
-- **Training considerations (not prescriptive):** training in the notebook uses an adaptive optimizer and monitors validation Dice/accuracy to save best checkpoints.
+<img src="images/preprocessed.png" width="500" alt="Preprocessed Eye Frame"/>
 
----
-
-## Data preprocessing & augmentation
-Robust preprocessing and augmentation are critical for medical segmentation where datasets are often small and variable:
-
-- **Standardization:** Images are resized to a fixed input resolution and normalized (pixel values scaled to [0,1] or standardized per channel).
-- **Mask handling:** Masks are binarized and cast to float types to match model outputs.
-- **Geometric augmentations (applied identically to image+mask):**
-  - Horizontal and vertical flips
-  - Small rotations (e.g., ±15°)
-  - Random translations and zooms
-- **Intensity augmentations:**
-  - Brightness/contrast jitter
-- **Implementation:** augmentations implemented using OpenCV + NumPy so that spatial transforms preserve mask alignment exactly.
-
----
-
-## Custom loss & metrics
-This project uses a **Jaccard Coefficient Loss** (IoU-based) implemented as a custom loss function and adapted for the U-Net training regime used here. The implementation in the notebook emphasizes overlap optimization while providing flexibility through **adjustable weighting for specific layers**.
-
-**What the Jaccard Coefficient Loss is**
-- The Jaccard coefficient (Intersection-over-Union, IoU) measures overlap between predicted and ground-truth masks. The loss used is based on `1 − IoU` (with a small smoothing term to ensure numerical stability).
-- IoU-focused loss directly optimizes the overlap metric that matters for segmentation quality, making it a strong choice when the target occupies a small portion of the image (optic disc vs background).
-
-**Why this choice**
-- Jaccard loss aligns training with the evaluation objective (overlap), while layer-weighting / deep supervision helps with optimization and faster convergence on encoder–decoder networks.
-- The notebook also reports **Dice coefficient** and **pixel-wise accuracy** per epoch for a comprehensive view of model performance: IoU/Dice capture overlap quality, while accuracy gives a coarse pixel-level view (used carefully because background dominates).
+```
+Eye Video (.mp4)
+      │
+      ▼
+Frame Extraction (OpenCV, every 1 frame)
+1,200 training frames + 2,066 test frames
+      │
+      ▼
+Preprocessing
+  ├── Resize to 400×200 px
+  ├── Normalise pixel intensities [0, 1]
+  └── Paired image+mask augmentation
+      │
+      ▼
+U-Net (TensorFlow/Keras)
+  ├── Encoder (4 stages, 8→16→32→64 filters)
+  ├── Skip connections
+  └── Decoder (4 upsample stages)
+      │
+      ▼
+3-Class Output Map
+  ├── Class 0: Background
+  ├── Class 1: Pupil
+  └── Class 2: Optic Disc
+      │
+      ▼
+Evaluation (Dice Coefficient, Pixel Accuracy)
+```
 
 ---
 
-## Training & evaluation (notes about what's in the notebook)
-- The notebook includes training loops and validation evaluation that compute and log accuracy and Dice coefficient per epoch.  
-- Model checkpoints (best by validation Dice or validation loss) and visualization cells demonstrate qualitative results: original image, ground truth mask, predicted probability map, and final thresholded mask.  
-- Quantitative results are computed locally when the notebook is executed with the private dataset.
+## Model Architecture
+
+<img src="images/segmentation_classes.png" width="600" alt="3-Class Segmentation Output"/>
+
+**U-Net with ELU activations** — a fully convolutional encoder–decoder with skip connections:
+
+| Stage | Layer | Filters | Notes |
+|-------|-------|---------|-------|
+| Encoder 1 | Conv2D × 2 | 8 | ELU, he_normal init |
+| Encoder 2 | Conv2D × 2 | 16 | MaxPool2D(2×2) |
+| Encoder 3 | Conv2D × 2 | 32 | MaxPool2D(2×2) |
+| Bottleneck | Conv2D × 2 | 64 | MaxPool2D(2×2) |
+| Decoder 3 | UpSampling + Conv | 32 | Skip from Encoder 3 |
+| Decoder 2 | UpSampling + Conv | 16 | Skip from Encoder 2 |
+| Decoder 1 | UpSampling + Conv | 8 | Skip from Encoder 1 |
+| Output | Conv2D(nb_classes) | 3 | Softmax per pixel |
+
+- **Input shape:** (400, 200, 3) RGB
+- **Output:** (400, 200, 3) probability map per class
+- **nb_classes:** 3 (background, pupil, disc)
 
 ---
 
-## Results & intended downstream usage
-- **Primary deliverable:** high-quality optic-disc segmentation masks (probability maps + binary masks).  
-- **Downstream uses:** segmentation outputs can be used to be fed to a classifier to perform glaucoma vs. non-glaucoma prediction. The segmentation stage reduces variability and provides explicit spatial context for clinical feature extraction.
+## Custom Loss & Metrics
+
+### Jaccard Coefficient Loss
+```python
+def jacc_coeff_loss_tissue(y_true, y_pred):
+    loss = 0
+    for i in range(nb_classes):
+        layer_weight = 1.0 if i != 1 else 2.0  # double weight on pupil class
+        loss += layer_weight * tf.reduce_sum(tf.minimum(y_true[...,i], y_pred[...,i])) / \
+                    tf.reduce_sum(tf.maximum(y_true[...,i], y_pred[...,i]))
+    return 1 - loss / nb_classes
+```
+Pupil class receives 2× weight to compensate for its small spatial area relative to background.
+
+### Dice Coefficient (Evaluation)
+```python
+def DiceCoeff(y_true, y_pred):
+    dice = np.zeros(nb_classes)
+    for i in range(nb_classes):
+        y_pred_round = np.round(y_pred[:,:,i])
+        ttt = np.sum(np.minimum(y_true[:,:,i], y_pred_round)) / \
+              (np.sum(y_true[:,:,i]) + np.sum(y_pred[:,:,i]))
+        dice[i] = 2 * ttt
+    return np.round(np.sum(dice) / nb_classes, 2)
+```
+
+---
+
+## Results
+
+| Metric | Notes |
+|--------|-------|
+| Dice Coefficient | Averaged across 3 classes |
+| Pixel Accuracy | Per-class and overall |
+| Test Set Size | 2,066 frames |
+
+> Training data and trained weights are not included in this repository (confidential clinical dataset).
+
+---
+
+## How to Run
+
+1. Mount Google Drive (Colab) and place video files at the expected path
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Open `Iris_Segmenter(End_to_End).ipynb` in Google Colab
+4. Update video file paths in cells to point to your data
+5. Run all cells sequentially — frame extraction → training → evaluation
+
+---
+
+## Requirements
+
+```
+tensorflow>=2.10
+opencv-python
+numpy
+matplotlib
+```
+
+See [`requirements.txt`](requirements.txt) for the full pinned list.
+
+---
+
+## About
+
+**Aguru Venkata Saisantosh Patnaik**  
+Medical imaging and computer vision pipeline built on Google Colab (T4 GPU).  
+Contact: [agurusantosh@gmail.com](mailto:agurusantosh@gmail.com)
