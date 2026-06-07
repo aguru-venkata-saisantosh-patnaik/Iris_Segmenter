@@ -19,21 +19,17 @@ A deep learning pipeline for **pixel-wise segmentation of the optic disc and pup
 
 ## Problem Statement
 
-<img src="images/raw_eye.png" width="500" alt="Raw Eye Video Frame"/>
-
 Accurate optic disc and pupil segmentation from retinal imaging is the foundational step for:
 - **Glaucoma detection** — cup-to-disc ratio measurement requires a precise disc boundary
 - **Pupillometry** — pupil size tracking for neurological assessment
 - **Surgical robotics** — real-time eye tracking for laser/robotic surgery guidance
 
-Input: RGB eye video frames (400×200 px) extracted from a Cirrus ophthalmic imaging device at 1 fps.  
-Output: Per-pixel 3-class segmentation mask.
+**Input:** RGB eye video frames (400×200 px) from a Cirrus ophthalmic imaging device at 1 fps — raw frames show the full eye anatomy: visible iris ring, pupil boundary, and partially obscured optic disc.  
+**Output:** Per-pixel 3-class segmentation mask (background / pupil / optic disc).
 
 ---
 
 ## Pipeline Overview
-
-<img src="images/preprocessed.png" width="500" alt="Preprocessed Eye Frame"/>
 
 ```
 Eye Video (.mp4)
@@ -64,11 +60,24 @@ U-Net (TensorFlow/Keras)
 Evaluation (Dice Coefficient, Pixel Accuracy)
 ```
 
+### Dataset Split
+
+| Split | Frames | Source |
+|-------|--------|--------|
+| Training | 1,200 | Cirrus ophthalmic video (AM3.mp4) |
+| Test | 2,066 | Held-out frames from same device |
+
+### Preprocessing Steps
+
+| Step | Operation | Detail |
+|------|-----------|--------|
+| 1 | Resize | 400×200 px — matches U-Net input shape |
+| 2 | Normalise | Pixel values scaled to [0, 1] |
+| 3 | Augmentation | Paired image+mask transforms (flip, crop) |
+
 ---
 
 ## Model Architecture
-
-<img src="images/segmentation_classes.png" width="600" alt="3-Class Segmentation Output"/>
 
 **U-Net with ELU activations** — a fully convolutional encoder–decoder with skip connections:
 
@@ -87,6 +96,15 @@ Evaluation (Dice Coefficient, Pixel Accuracy)
 - **Output:** (400, 200, 3) probability map per class
 - **nb_classes:** 3 (background, pupil, disc)
 
+### Design Choices
+
+| Choice | Rationale |
+|--------|-----------|
+| ELU activations | Avoids dying ReLU; produces negative outputs useful for normalisation |
+| he_normal initialisation | Variance-preserving init for ELU/ReLU — avoids gradient vanishing at init |
+| Skip connections | Preserves spatial detail from encoder; critical for precise boundary delineation |
+| Small filter counts (8→64) | Low parameter count suitable for Colab T4 GPU with limited VRAM |
+
 ---
 
 ## Custom Loss & Metrics
@@ -101,7 +119,16 @@ def jacc_coeff_loss_tissue(y_true, y_pred):
                     tf.reduce_sum(tf.maximum(y_true[...,i], y_pred[...,i]))
     return 1 - loss / nb_classes
 ```
+
 Pupil class receives 2× weight to compensate for its small spatial area relative to background.
+
+### Class Weighting Rationale
+
+| Class | Weight | Reason |
+|-------|--------|--------|
+| Background (0) | 1.0× | Dominant class — no extra emphasis needed |
+| Pupil (1) | 2.0× | Small spatial area; under-penalised without weighting |
+| Optic Disc (2) | 1.0× | Intermediate size; default weight sufficient |
 
 ### Dice Coefficient (Evaluation)
 ```python
